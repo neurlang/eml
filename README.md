@@ -16,7 +16,6 @@ All elementary functions from a single operator for golang
 # Negate the input number
 
 ```go
-
 	var negate = &EmlProgram{&EML, &EML, &ONE, &EML, &ONE, &EML, &ONE, &EML, &EML, &ONE, &ONE, &ONE, &EML, EXX, &ONE}
 	println(negate.Evaluate(1))
 ```
