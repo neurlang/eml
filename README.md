@@ -1,4 +1,4 @@
-# EML inspired stack based programming language
+# EML
 
 All elementary functions from a single operator for golang
 
@@ -6,21 +6,25 @@ All elementary functions from a single operator for golang
 
 [Whitepaper](https://arxiv.org/pdf/2603.21852)
 
-# Euler's constant
+[Go Playground](https://go.dev/play/p/PGk6eBLJA_p)
+
+## Demos
+
+### Euler's constant
 
 ```go
 	var euler = &EmlProgram{&EML, &ONE, &ONE}
 	println(euler.Evaluate(1337))
 ```
 
-# Negate the input number
+### Negate the input number
 
 ```go
 	var negate = &EmlProgram{&EML, &EML, &ONE, &EML, &ONE, &EML, &ONE, &EML, &EML, &ONE, &ONE, &ONE, &EML, EXX, &ONE}
 	println(negate.Evaluate(1))
 ```
 
-# Calculate the reciprocal
+### Calculate the reciprocal
 
 ```go
 
