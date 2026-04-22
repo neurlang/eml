@@ -1,6 +1,7 @@
 package regression
 
 import "math"
+import "fmt"
 
 type Program []byte
 
@@ -33,7 +34,7 @@ func (p *Program) Evaluate(x float64) float64 {
 	return x
 }
 
-func (p *Program) Debug() string {
+func (p *Program) Debug(exp, log string) string {
 	var op = p.pop()
 	if op != EXX {
 		switch op {
@@ -41,10 +42,61 @@ func (p *Program) Debug() string {
 			return "1"
 
 		case EML:
-			left := p.Debug()
-			right := p.Debug()
-			return "exp(" + left + ")-log(" + right + ")"
+			left := p.Debug(exp, log)
+			right := p.Debug(exp, log)
+			return exp + "(" + left + ")-"+log+"(" + right + ")"
 		}
 	}
 	return "x"
+}
+
+
+func (p *Program) IsConst() (bool) {
+	var op = p.pop()
+	if op != EXX {
+		switch op {
+		case ONE:
+			return true
+
+		case EML:
+			left := p.IsConst()
+			right := p.IsConst()
+			return left && right
+		}
+	}
+	return false
+}
+
+func (p *Program) DebugShort(exp, log string, exx float64) string {
+	var op = p.pop()
+	if op != EXX {
+		switch op {
+		case ONE:
+			return "1"
+
+		case EML:
+			var qq = *p
+			var q = &qq
+
+			var left, right string
+			if p.IsConst() {
+				left = fmt.Sprint(q.Evaluate(exx))
+			} else {
+				left = q.DebugShort(exp, log, exx)
+			}
+			if p.IsConst() {
+				right = fmt.Sprint(q.Evaluate(exx))
+			} else {
+				right = q.DebugShort(exp, log, exx)
+			}
+			if right == "1" {
+				return exp + "(" + left + ")"
+			}
+			if left == "1" {
+				return "e-"+log+"(" + right + ")"
+			}
+			return exp + "(" + left + ")-"+log+"(" + right + ")"
+		}
+	}
+	return fmt.Sprint(exx)
 }

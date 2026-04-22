@@ -60,11 +60,11 @@ func progressbar(sos float64, pos, max uint64, name string) {
 	}
 }
 
-func callback_progress(prog []byte, sos float64, beta, rho uint, percent uint) {
+func callback_progress(prog []byte, sos float64, beta, rho uint, exp, log string, percent uint) {
 	debugged := regression.Program(prog)
-	progressbar(sos, uint64(percent), 100, debugged.Debug())
+	progressbar(sos, uint64(percent), 100, debugged.Debug(exp, log))
 }
-func callback_json(prog []byte, sos float64, beta, rho uint, percent uint) {
+func callback_json(prog []byte, sos float64, beta, rho uint, exp, log string, percent uint) {
 	debugged := regression.Program(prog)
 	evaluated := regression.Program(prog)
 	var arr []int
@@ -74,7 +74,7 @@ func callback_json(prog []byte, sos float64, beta, rho uint, percent uint) {
 	var d = callback_data{
 		Array:        arr,
 		Data:         prog,
-		Function:     debugged.Debug(),
+		Function:     debugged.Debug(exp, log),
 		ErrorSqSum:   sos,
 		FunctionZero: evaluated.Evaluate(0),
 		Iteration:    beta,
@@ -96,6 +96,7 @@ func callback_json(prog []byte, sos float64, beta, rho uint, percent uint) {
 func main() {
 	var xs, ys floatSlice
 	var a, r, b, s int
+	var exp, log = "exp", "log"
 	var js bool
 	flag.Var(&xs, "x", "function inputs")
 	flag.Var(&ys, "y", "function outputs")
@@ -104,6 +105,8 @@ func main() {
 	flag.IntVar(&b, "b", 1, "beta (brute forcing iterations)")
 	flag.IntVar(&s, "s", 0, "seed (random seed)")
 	flag.BoolVar(&js, "json", false, "json (dump format)")
+	flag.StringVar(&exp, "e", "exp", "exp (function name)")
+	flag.StringVar(&log, "l", "log", "log (function name)")
 	flag.Parse()
 
 	if s == 0 {
@@ -123,11 +126,11 @@ func main() {
 	var cb regression.Callback
 	if js {
 		cb = func(prog []byte, sos float64, beta, rho uint) {
-			callback_json(prog, sos, beta, rho, (100*(beta+uint(b)*rho))/(uint(b)*uint(r+1)))
+			callback_json(prog, sos, beta, rho, exp, log, (100*(beta+uint(b)*rho))/(uint(b)*uint(r+1)))
 		}
 	} else {
 		cb = func(prog []byte, sos float64, beta, rho uint) {
-			callback_progress(prog, sos, beta, rho, (100*(beta+uint(b)*rho))/(uint(b)*uint(r+1)))
+			callback_progress(prog, sos, beta, rho, exp, log, (100*(beta+uint(b)*rho))/(uint(b)*uint(r+1)))
 		}
 	}
 
@@ -142,12 +145,16 @@ func main() {
 		evaluated := regression.Program(prog)
 		fmt.Println("\r")
 		fmt.Println("--- RESULTS ---")
-		fmt.Println("Final formula:", debugged.Debug())
+		fmt.Println("Final formula:", debugged.Debug(exp, log))
 		fmt.Println("Error Sum Of Squares:", sos)
 		fmt.Println("Formula eval at 0:", evaluated.Evaluate(0))
 		for i := range xs {
 			evaluated2 := regression.Program(prog)
 			fmt.Printf("Formula eval at %f: %f\n", xs[i], evaluated2.Evaluate(xs[i]))
+		}
+		for i := range xs {
+			evaluated2 := regression.Program(prog)
+			fmt.Printf("Formula simple at %f: %s\n", xs[i], evaluated2.DebugShort(exp, log, xs[i]))
 		}
 	}
 }
