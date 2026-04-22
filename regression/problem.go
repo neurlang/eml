@@ -76,6 +76,7 @@ func MinimizeThreaded(prob Problem, length, iters uint, sos float64, cb Callback
 }
 
 func MinimizeRounds(prob Problem, length, iters, rounds uint, sos float64, cb Callback) (p Program, newsos float64) {
+	newsos = sos
 	p = []byte{0}
 	for r := uint(0); r < rounds; r++ {
 		var prog Program
@@ -99,6 +100,7 @@ func MinimizeRounds(prob Problem, length, iters, rounds uint, sos float64, cb Ca
 		if sos == 0 {
 			break
 		}
+		newsos = sos
 	}
 	return
 }
