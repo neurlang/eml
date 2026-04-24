@@ -1,5 +1,6 @@
 package regression
 
+import "math/cmplx"
 import "math"
 import "fmt"
 
@@ -33,6 +34,21 @@ func (p *Program) Evaluate(x float64) float64 {
 	}
 	return x
 }
+func (p *Program) EvaluateComplex(x complex128) complex128 {
+	var op = p.pop()
+	if op != EXX {
+		switch op {
+		case ONE:
+			return 1
+
+		case EML:
+			left := p.EvaluateComplex(x)
+			right := p.EvaluateComplex(x)
+			return cmplx.Exp(left) - cmplx.Log(right)
+		}
+	}
+	return x
+}
 
 func (p *Program) Debug(exp, log string) string {
 	var op = p.pop()
@@ -44,14 +60,13 @@ func (p *Program) Debug(exp, log string) string {
 		case EML:
 			left := p.Debug(exp, log)
 			right := p.Debug(exp, log)
-			return exp + "(" + left + ")-"+log+"(" + right + ")"
+			return exp + "(" + left + ")-" + log + "(" + right + ")"
 		}
 	}
 	return "x"
 }
 
-
-func (p *Program) IsConst() (bool) {
+func (p *Program) IsConst() bool {
 	var op = p.pop()
 	if op != EXX {
 		switch op {
@@ -93,9 +108,42 @@ func (p *Program) DebugShort(exp, log string, exx float64) string {
 				return exp + "(" + left + ")"
 			}
 			if left == "1" {
-				return "e-"+log+"(" + right + ")"
+				return "e-" + log + "(" + right + ")"
 			}
-			return exp + "(" + left + ")-"+log+"(" + right + ")"
+			return exp + "(" + left + ")-" + log + "(" + right + ")"
+		}
+	}
+	return fmt.Sprint(exx)
+}
+func (p *Program) DebugShortComplex(exp, log string, exx complex128) string {
+	var op = p.pop()
+	if op != EXX {
+		switch op {
+		case ONE:
+			return "1"
+
+		case EML:
+			var qq = *p
+			var q = &qq
+
+			var left, right string
+			if p.IsConst() {
+				left = fmt.Sprint(q.EvaluateComplex(exx))
+			} else {
+				left = q.DebugShortComplex(exp, log, exx)
+			}
+			if p.IsConst() {
+				right = fmt.Sprint(q.EvaluateComplex(exx))
+			} else {
+				right = q.DebugShortComplex(exp, log, exx)
+			}
+			if right == "1" {
+				return exp + "(" + left + ")"
+			}
+			if left == "1" {
+				return "e-" + log + "(" + right + ")"
+			}
+			return exp + "(" + left + ")-" + log + "(" + right + ")"
 		}
 	}
 	return fmt.Sprint(exx)

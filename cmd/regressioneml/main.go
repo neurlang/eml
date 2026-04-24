@@ -9,14 +9,14 @@ import "math/rand"
 import "encoding/json"
 import "github.com/neurlang/eml/regression"
 
-type floatSlice []float64
+type complexSlice []complex128
 
-func (f *floatSlice) String() string {
+func (f *complexSlice) String() string {
 	return fmt.Sprint(*f)
 }
 
-func (f *floatSlice) Set(value string) error {
-	v, err := strconv.ParseFloat(value, 64)
+func (f *complexSlice) Set(value string) error {
+	v, err := strconv.ParseComplex(value, 64)
 	if err != nil {
 		return err
 	}
@@ -94,7 +94,7 @@ func callback_json(prog []byte, sos float64, beta, rho uint, exp, log string, pe
 }
 
 func main() {
-	var xs, ys floatSlice
+	var xs, ys complexSlice
 	var a, r, b, s int
 	var exp, log = "exp", "log"
 	var js bool
@@ -122,7 +122,7 @@ func main() {
 		ys = append(ys, 0)
 	}
 
-	var problem regression.Problem
+	var problem regression.ProblemComplex
 	var cb regression.Callback
 	if js {
 		cb = func(prog []byte, sos float64, beta, rho uint) {
@@ -135,10 +135,10 @@ func main() {
 	}
 
 	for i := range xs {
-		problem = append(problem, [2]float64{xs[i], ys[i]})
+		problem = append(problem, [2]complex128{xs[i], ys[i]})
 	}
 
-	prog, sos := regression.MinimizeRounds(problem, uint(a), uint(b), uint(r), math.Inf(1), cb)
+	prog, sos := regression.MinimizeRoundsComplex(problem, uint(a), uint(b), uint(r), math.Inf(1), cb)
 	cb(prog, sos, uint(b), uint(r))
 	if !js {
 		debugged := regression.Program(prog)
@@ -150,11 +150,11 @@ func main() {
 		fmt.Println("Formula eval at 0:", evaluated.Evaluate(0))
 		for i := range xs {
 			evaluated2 := regression.Program(prog)
-			fmt.Printf("Formula eval at %f: %f\n", xs[i], evaluated2.Evaluate(xs[i]))
+			fmt.Printf("Formula eval at %f: %f\n", xs[i], evaluated2.EvaluateComplex(xs[i]))
 		}
 		for i := range xs {
 			evaluated2 := regression.Program(prog)
-			fmt.Printf("Formula simple at %f: %s\n", xs[i], evaluated2.DebugShort(exp, log, xs[i]))
+			fmt.Printf("Formula simple at %f: %s\n", xs[i], evaluated2.DebugShortComplex(exp, log, xs[i]))
 		}
 	}
 }
