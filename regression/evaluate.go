@@ -137,10 +137,10 @@ func (p *Program) DebugShortComplex(exp, log string, exx complex128) string {
 			} else {
 				right = q.DebugShortComplex(exp, log, exx)
 			}
-			if right == "1" {
+			if right == "1" || right == "(1+0i)" {
 				return exp + "(" + left + ")"
 			}
-			if left == "1" {
+			if left == "1" || left == "(1+0i)" {
 				return "e-" + log + "(" + right + ")"
 			}
 			return exp + "(" + left + ")-" + log + "(" + right + ")"
