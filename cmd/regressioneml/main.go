@@ -147,7 +147,7 @@ func main() {
 		fmt.Println("--- RESULTS ---")
 		fmt.Println("Final formula:", debugged.Debug(exp, log))
 		fmt.Println("Error Sum Of Squares:", sos)
-		fmt.Println("Formula eval at 0:", evaluated.Evaluate(0))
+		fmt.Println("Formula eval at 0:", evaluated.EvaluateComplex(0))
 		for i := range xs {
 			evaluated2 := regression.Program(prog)
 			fmt.Printf("Formula eval at %f: %f\n", xs[i], evaluated2.EvaluateComplex(xs[i]))
