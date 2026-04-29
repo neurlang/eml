@@ -3,31 +3,264 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EML UI</title>
+    <title>Exp-Log Regression Calculator</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #1a1a2e;
+            color: #eee;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            background-color: #16213e;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            color: #00d9ff;
+        }
+        .panel {
+            background-color: #16213e;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            padding: 15px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+        .panel-title {
+            text-align: center;
+            background-color: #0f3460;
+            padding: 8px;
+            border-radius: 3px;
+            margin-bottom: 15px;
+            color: white;
+            font-size: 1.1em;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 10px;
+        }
+        th, td {
+            padding: 10px;
+            text-align: center;
+            border-bottom: 1px solid #0f3460;
+        }
+        th {
+            background-color: #0f3460;
+            color: #eee;
+        }
+        tr:last-child td {
+            border-bottom: none;
+        }
+        input[type="number"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #0f3460;
+            border-radius: 3px;
+            background-color: #1a1a2e;
+            color: #eee;
+            text-align: center;
+        }
+        input[type="number"]:focus {
+            outline: none;
+            border-color: #e94560;
+        }
+        .scroll-container {
+            max-height: 250px;
+            overflow-y: auto;
+        }
+        .buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background-color 0.2s;
+        }
+        .btn-add {
+            background-color: #45e960;
+            color: white;
+        }
+        .btn-add:hover {
+            background-color: #3ec754;
+        }
+        .btn-remove {
+            background-color: #e94560;
+            color: white;
+        }
+        .btn-remove:hover {
+            background-color: #c73e54;
+        }
+        .btn-clear {
+            background-color: #ffa502;
+            color: white;
+        }
+        .btn-clear:hover {
+            background-color: #e69e02;
+        }
+        .calculation-panel {
+            min-height: 100px;
+            align-items: center;
+            justify-content: center;
+        }
+        .scroll-info {
+            text-align: center;
+            font-size: 0.85em;
+            color: #aaa;
+            margin-top: 5px;
+        }
+        #input, #output {
+            display: block;
+            font-family: monospace;
+        }
+        small {
+            padding: 2px 4px;
+            background-color: green;
+            border: none;
+            border-radius: 2px;
+        }
+    </style>
 </head>
 <body>
-    <h1>EML UI</h1>
-    <div id="output"></div>
+    <div class="container">
+        <h1>Exp-Log Regression Calculator</h1>
+
+        <div class="panel">
+            <div class="panel-title">Data Points List</div>
+            <div class="scroll-container">
+                <table id="dataTable">
+                    <thead>
+                        <tr>
+                            <th width="10%">#</th>
+                            <th width="45%">X Value</th>
+                            <th width="45%">Y Value</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dataBody">
+                    </tbody>
+                </table>
+            </div>
+            <div class="scroll-info">▲<br>Scroll</div>
+        </div>
+
+        <div class="panel">
+            <div class="buttons">
+                <button class="btn-add" onclick="addOne()">Add Point</button>
+                <button class="btn-remove" onclick="removeSelected()">Remove Selected</button>
+                <button class="btn-clear" onclick="clearAll()">Clear All</button>
+            </div>
+        </div>
+
+        <div class="panel calculation-panel">
+            <div class="panel-title"><button id="calculate" onclick="calculate()">CALCULATION</button></div>
+            <div id="input"></div>
+            <div id="output"></div>
+        </div>
+    </div>
+
 <script src="wasm_exec.js"></script>
 <script>
-	if (!WebAssembly.instantiateStreaming) { // polyfill
-		WebAssembly.instantiateStreaming = async (resp, importObject) => {
-			const source = await (await resp).arrayBuffer();
-			return await WebAssembly.instantiate(source, importObject);
-		};
-	}
+    let dataPoints = [
+        {x: 1, y: 3.14159}
+    ];
 
-	const go = new Go();
-	let mod, inst;
-	WebAssembly.instantiateStreaming(fetch("emlui.wasm"), go.importObject).then(async(result) => {
-		mod = result.module;
-		inst = result.instance;
-		console.clear();
-		await go.run(inst);
-		inst = await WebAssembly.instantiate(mod, go.importObject); // reset instance
-	}).catch((err) => {
-		console.error(err);
-	});
+    function renderTable() {
+        const tbody = document.getElementById('dataBody');
+        tbody.innerHTML = '';
+        
+        dataPoints.forEach((point, index) => {
+            const row = document.createElement('tr');
+            const isChecked = point.selected ? 'checked' : '';
+            
+            row.innerHTML = `
+                <td><input type="checkbox" data-index="${index}" ${isChecked}></td>
+                <td><input type="number" value="${point.x}" step="0.1" onchange="updatePoint(${index}, 'x', this.value)"></td>
+                <td><input type="number" value="${point.y}" step="0.1" onchange="updatePoint(${index}, 'y', this.value)"></td>
+            `;
+            
+            row.onclick = function(e) {
+                if (e.target.type !== 'checkbox') {
+                    const checkbox = row.querySelector('input[type="checkbox"]');
+                    checkbox.checked = !checkbox.checked;
+                    dataPoints[index].selected = checkbox.checked;
+                }
+            };
+            
+            tbody.appendChild(row);
+        });
+    }
+
+    function updatePoint(index, field, value) {
+        dataPoints[index][field] = parseFloat(value);
+    }
+
+    function addOne() {
+        dataPoints.push({x: 0, y: 0});
+        renderTable();
+    }
+
+    function removeSelected() {
+        dataPoints = dataPoints.filter((point, index) => {
+            const checkbox = document.querySelector(`input[data-index="${index}"]`);
+            return !checkbox.checked;
+        });
+        
+        let i = 0;
+        dataPoints.forEach(point => point.selected = false);
+        renderTable();
+    }
+
+    function clearAll() {
+        if (confirm('Clear all data points?')) {
+            dataPoints = [];
+            renderTable();
+        }
+    }
+
+    window.addEventListener('load', () => {
+        renderTable();
+    });
+
+    function calculate() {
+        
+        document.getElementById('input').innerHTML = JSON.stringify(dataPoints.map(point => [point.x, point.y]));
+
+
+        if (!WebAssembly.instantiateStreaming) {
+            WebAssembly.instantiateStreaming = async (resp, importObject) => {
+                const source = await (await resp).arrayBuffer();
+                return await WebAssembly.instantiate(source, importObject);
+            };
+        }
+
+        const go = new Go();
+        let mod, inst;
+        WebAssembly.instantiateStreaming(fetch("emlui.wasm"), go.importObject).then(async(result) => {
+            mod = result.module;
+            inst = result.instance;
+            console.clear();
+            await go.run(inst);
+            inst = await WebAssembly.instantiate(mod, go.importObject);
+        }).catch((err) => {
+            console.error(err);
+        });
+    }
 </script>
 </body>
 </html>
