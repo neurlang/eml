@@ -6,6 +6,13 @@ import "math"
 
 type ProblemComplex [][2]complex128
 
+func (p Problem) AsComplex() (c ProblemComplex) {
+	for _, v := range p {
+		c = append(c, [2]complex128{complex(v[0], 0), complex(v[1], 0)})
+	}
+	return
+}
+
 func MinimizeComplex(prob ProblemComplex, length, iters uint, sos *float64, mut *sync.Mutex, cb Callback) (p Program) {
 
 	mut.Lock()
