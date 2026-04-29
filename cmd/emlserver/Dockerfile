@@ -2,6 +2,8 @@ FROM golang:alpine AS builder
 
 WORKDIR /app
 
+COPY . .
+
 RUN go mod init emlserver
 RUN go mod download
 RUN go get github.com/neurlang/eml/regression
