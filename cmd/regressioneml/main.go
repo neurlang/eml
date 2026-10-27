@@ -4,7 +4,7 @@ import "fmt"
 import "flag"
 import "strconv"
 import "math"
-import "time"
+import "encoding/binary"
 import "math/rand"
 import "encoding/json"
 import "github.com/neurlang/eml/regression"
@@ -26,13 +26,34 @@ func (f *complexSlice) Set(value string) error {
 
 type callback_data struct {
 	Percent      uint
-	ErrorSqSum   float64
-	FunctionZero float64
+	ErrorSqSum   JSONFloat
+	FunctionZero JSONFloat
 	Iteration    uint
 	Round        uint
 	Array        []int
 	Data         []byte
 	Function     string
+	Seed         uint64
+	Thread       uint64
+}
+
+type JSONFloat float64
+
+func (j JSONFloat) MarshalJSON() ([]byte, error) {
+	v := float64(j)
+	if math.IsNaN(float64(j)) {
+		return []byte("null"), nil
+	}
+	if math.IsInf(float64(j), 0) {
+		// handle infinity, assign desired value to v
+		// or say +/- indicates infinity
+		s := `"+∞"`
+		if math.IsInf(v, -1) {
+			s = `"-∞"`
+		}
+		return []byte(s), nil
+	}
+	return json.Marshal(v) // marshal result as standard float64
 }
 
 func emptySpace(space int) string {
@@ -60,11 +81,12 @@ func progressbar(sos float64, pos, max uint64, name string) {
 	}
 }
 
-func callback_progress(prog []byte, sos float64, beta, rho uint, exp, log string, percent uint) {
+func callback_progress(prog []byte, sos float64, beta, rho uint, exp, log string, percent uint, _, _ uint64) {
 	debugged := regression.Program(prog)
 	progressbar(sos, uint64(percent), 100, debugged.Debug(exp, log))
 }
-func callback_json(prog []byte, sos float64, beta, rho uint, exp, log string, percent uint) {
+func callback_json(prog []byte, sos float64, beta, rho uint, exp, log string, percent uint, seed0, seed1 uint64) {
+
 	debugged := regression.Program(prog)
 	evaluated := regression.Program(prog)
 	var arr []int
@@ -75,11 +97,13 @@ func callback_json(prog []byte, sos float64, beta, rho uint, exp, log string, pe
 		Array:        arr,
 		Data:         prog,
 		Function:     debugged.Debug(exp, log),
-		ErrorSqSum:   sos,
-		FunctionZero: evaluated.Evaluate(0),
+		ErrorSqSum:   JSONFloat(sos),
+		FunctionZero: JSONFloat(evaluated.Evaluate(0)),
 		Iteration:    beta,
 		Round:        rho,
 		Percent:      percent,
+		Seed:         seed0,
+		Thread:       seed1,
 	}
 	data, err := json.Marshal(&d)
 	if err != nil {
@@ -89,13 +113,14 @@ func callback_json(prog []byte, sos float64, beta, rho uint, exp, log string, pe
 			return
 		}
 		return
+	} else {
+		println(string(data))
 	}
-	println(string(data))
 }
 
 func main() {
 	var xs, ys complexSlice
-	var a, r, b, s int
+	var a, r, b, s, t int
 	var exp, log = "exp", "log"
 	var js bool
 	flag.Var(&xs, "x", "function inputs")
@@ -103,17 +128,25 @@ func main() {
 	flag.IntVar(&a, "a", 1, "alpha (function size per round)")
 	flag.IntVar(&r, "r", 1, "rho (rounds)")
 	flag.IntVar(&b, "b", 1, "beta (brute forcing iterations)")
-	flag.IntVar(&s, "s", 0, "seed (random seed)")
+	flag.IntVar(&s, "s", -1, "seed (unused for random seed)")
+	flag.IntVar(&t, "t", 0, "thread (second seed component)")
 	flag.BoolVar(&js, "json", false, "json (dump format)")
 	flag.StringVar(&exp, "e", "exp", "exp (function name)")
 	flag.StringVar(&log, "l", "log", "log (function name)")
 	flag.Parse()
 
-	if s == 0 {
-		rand.Seed(time.Now().UnixNano())
+	var seed [2]uint64
+
+	if s == -1 {
+		var b [8]byte
+		if _, err := rand.Read(b[:3]); err != nil {
+			seed[0] = uint64(s)
+		}
+		seed[0] = uint64(binary.LittleEndian.Uint64(b[:]))
 	} else {
-		rand.Seed(int64(s))
+		seed[0] = uint64(s)
 	}
+	seed[1] = uint64(t)
 
 	for len(xs) < len(ys) {
 		xs = append(xs, 0)
@@ -125,12 +158,12 @@ func main() {
 	var problem regression.ProblemComplex
 	var cb regression.Callback
 	if js {
-		cb = func(prog []byte, sos float64, beta, rho uint) {
-			callback_json(prog, sos, beta, rho, exp, log, (100*(beta+uint(b)*rho))/(uint(b)*uint(r+1)))
+		cb = func(prog []byte, sos float64, beta, rho uint, seed0, seed1 uint64) {
+			callback_json(prog, sos, beta, rho, exp, log, (100*(beta+uint(b)*rho))/(uint(b)*uint(r+1)), seed0, seed1)
 		}
 	} else {
-		cb = func(prog []byte, sos float64, beta, rho uint) {
-			callback_progress(prog, sos, beta, rho, exp, log, (100*(beta+uint(b)*rho))/(uint(b)*uint(r+1)))
+		cb = func(prog []byte, sos float64, beta, rho uint, seed0, seed1 uint64) {
+			callback_progress(prog, sos, beta, rho, exp, log, (100*(beta+uint(b)*rho))/(uint(b)*uint(r+1)), seed0, seed1)
 		}
 	}
 
@@ -138,8 +171,8 @@ func main() {
 		problem = append(problem, [2]complex128{xs[i], ys[i]})
 	}
 
-	prog, sos := regression.MinimizeRoundsComplex(problem, uint(a), uint(b), uint(r), math.Inf(1), cb)
-	cb(prog, sos, uint(b), uint(r))
+	prog, sos := regression.MinimizeRoundsComplex(problem, uint(a), uint(b), uint(r), math.Inf(1), cb, seed)
+	cb(prog, sos, uint(b), uint(r), seed[0], seed[1])
 	if !js {
 		debugged := regression.Program(prog)
 		evaluated := regression.Program(prog)

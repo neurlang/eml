@@ -13,14 +13,16 @@ func (p Problem) AsComplex() (c ProblemComplex) {
 	return
 }
 
-func MinimizeComplex(prob ProblemComplex, length, iters uint, sos *float64, mut *sync.Mutex, cb Callback) (p Program) {
+func MinimizeComplex(prob ProblemComplex, length, iters uint, sos *float64, mut *sync.Mutex, cb Callback, seed [2]uint64) (p Program) {
 
 	mut.Lock()
 	var sossos = *sos
 	mut.Unlock()
+	r := NewRandomizer(seed)
+
 outer:
 	for i := uint(0); i < iters; i++ {
-		candidate := New(length)
+		candidate := r.New(length)
 
 		var sum float64
 
@@ -40,7 +42,7 @@ outer:
 		mut.Lock()
 		if *sos > sum {
 			p = candidate
-			cb(p, sum, i, 0)
+			cb(p, sum, i, 0, seed[0], seed[1])
 			*sos = sum
 			sossos = sum
 		} else {
@@ -54,7 +56,7 @@ outer:
 	return
 }
 
-func MinimizeThreadedComplex(prob ProblemComplex, length, iters uint, sos float64, cb Callback) (p Program, newsos float64) {
+func MinimizeThreadedComplex(prob ProblemComplex, length, iters uint, sos float64, cb Callback, seed [2]uint64) (p Program, newsos float64) {
 
 	procs := runtime.GOMAXPROCS(0)
 	iter := iters / uint(procs)
@@ -64,7 +66,7 @@ func MinimizeThreadedComplex(prob ProblemComplex, length, iters uint, sos float6
 	for i := 0; i < procs; i++ {
 		wg.Add(1)
 		go func(prob ProblemComplex, length, iters uint, sos *float64, mut *sync.Mutex, cb Callback) {
-			prog := MinimizeComplex(prob, length, iter, sos, mut, cb)
+			prog := MinimizeComplex(prob, length, iter, sos, mut, cb, [2]uint64{seed[0], uint64(i) + seed[1]})
 			if prog != nil {
 				mut.Lock()
 				p = prog
@@ -80,14 +82,14 @@ func MinimizeThreadedComplex(prob ProblemComplex, length, iters uint, sos float6
 	return
 }
 
-func MinimizeRoundsComplex(prob ProblemComplex, length, iters, rounds uint, sos float64, cb Callback) (p Program, newsos float64) {
+func MinimizeRoundsComplex(prob ProblemComplex, length, iters, rounds uint, sos float64, cb Callback, seed [2]uint64) (p Program, newsos float64) {
 	newsos = sos
 	p = []byte{0}
 	for r := uint(0); r < rounds; r++ {
 		var prog Program
-		prog, newsos = MinimizeThreadedComplex(prob, length, iters, sos, func(prog []byte, sos float64, beta, rho uint) {
-			cb(prog, sos, beta, r)
-		})
+		prog, newsos = MinimizeThreadedComplex(prob, length, iters, sos, func(prog []byte, sos float64, beta, rho uint, seed0, seed1 uint64) {
+			cb(prog, sos, beta, r, seed0, seed1)
+		}, seed)
 
 		if newsos >= sos {
 			break

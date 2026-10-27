@@ -10,7 +10,7 @@ func TestZeroSOS(t *testing.T) {
 	for i := range xs {
 		prob = append(prob, [2]float64{xs[i], ys[i]})
 	}
-	_, sos := MinimizeRounds(prob, 10, 10, 1, math.Inf(1), nil)
+	_, sos := MinimizeRounds(prob, 10, 10, 1, math.Inf(1), nil, [2]uint64{0, 0})
 	if sos == 0 {
 		t.Fatalf("SOS zero")
 	}

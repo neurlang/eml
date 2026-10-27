@@ -5,13 +5,16 @@ import (
 )
 
 func FuzzNew(f *testing.F) {
-	f.Add(uint(1))
-	f.Add(uint(5))
-	f.Add(uint(10))
-	f.Add(uint(20))
+	f.Add(uint(1), uint64(2), uint64(3))
+	f.Add(uint(5), uint64(7), uint64(8))
+	f.Add(uint(10), uint64(12), uint64(13))
+	f.Add(uint(20), uint64(22), uint64(23))
 
-	f.Fuzz(func(t *testing.T, length uint) {
-		p := New(length)
+	f.Fuzz(func(t *testing.T, length uint, seed0 uint64, seed1 uint64) {
+
+		r := NewRandomizer([2]uint64{seed0, seed1})
+
+		p := r.New(length)
 
 		exxCount := 0
 		for _, b := range p {

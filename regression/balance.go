@@ -1,19 +1,26 @@
 package regression
 
-import rand "math/rand"
+import rand "math/rand/v2"
+
+type Randomizer rand.Rand
+
+func NewRandomizer(seed [2]uint64) *Randomizer {
+	var r = Randomizer(*rand.New(rand.NewPCG(seed[0], seed[1])))
+	return &r
+}
 
 // Make makes unbalanced EML program
-func Make(length uint) (p Program) {
+func (r *Randomizer) Make(length uint) (p Program) {
 	p = make(Program, length)
 	for i := range p {
-		p[i] = ONE + byte(rand.Intn(2))
+		p[i] = ONE + byte(((*rand.Rand)(r)).IntN(2))
 	}
 	return
 }
 
 // Balance balances the EML program and tells the final program size.
 // Past-the-end input is treated as an implicit 0 (variable) unary leaf.
-func Balance(p *Program) uint {
+func (r *Randomizer) Balance(p *Program) uint {
 	var parse func(i int) (size uint, next int)
 
 	parse = func(i int) (uint, int) {
@@ -66,10 +73,10 @@ func ChooseVar(p Program, pos uint) {
 }
 
 // New fully generates a Program of expected length length that will have no or one variable
-func New(length uint) (p Program) {
-	p = Make(length)
+func (r *Randomizer) New(length uint) (p Program) {
+	p = r.Make(length)
 	var q = p
-	b := Balance(&q)
+	b := r.Balance(&q)
 	if len(p) > int(b) {
 		p = p[:b]
 	} else {
@@ -79,7 +86,7 @@ func New(length uint) (p Program) {
 	}
 	c := ClearVars(p)
 	if c > 0 {
-		ChooseVar(p, uint(rand.Intn(int(c))))
+		ChooseVar(p, uint(((*rand.Rand)(r)).IntN(int(c))))
 	}
 	return
 }
