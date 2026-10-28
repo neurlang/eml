@@ -68,21 +68,36 @@ func Minimize(prob Problem, length, iters uint, sos *float64, mut *sync.Mutex, c
 // under the mutex, preserving program-score consistency. Trade-off: the atomic
 // read avoids per-candidate mutex contention (most candidates prune early) while
 // keeping the threshold far fresher than the previous cached-on-improvement value.
+// distIter returns the number of iterations assigned to worker i when the
+// total budget iters is distributed across procs workers. It uses quotient and
+// remainder distribution: every worker gets iters/procs iterations, and the
+// first iters%procs workers receive one extra iteration. This schedules exactly
+// iters candidate evaluations in total, never more, and gives work to every
+// worker whenever iters > 0 (budgets smaller than the worker count still
+// perform work).
+func distIter(iters uint, procs, i int) uint {
+	iter := iters / uint(procs)
+	if uint(i) < iters%uint(procs) {
+		iter++
+	}
+	return iter
+}
+
 func MinimizeThreaded(prob Problem, length, iters uint, sos float64, cb Callback, seed [2]uint64) (p Program, newsos float64) {
 
 	procs := runtime.GOMAXPROCS(0)
-	iter := iters / uint(procs)
 	var mut sync.Mutex
 	var wg sync.WaitGroup
 	var best Program
 	var bestScore uint64
 
 	for i := 0; i < procs; i++ {
+		it := distIter(iters, procs, i)
 		wg.Add(1)
-		go func(prob Problem, length, iters uint, sos *float64, best *Program, mut *sync.Mutex, cb Callback, bestScore *uint64) {
-			MinimizeCommon(prob, length, iter, sos, best, mut, cb, [2]uint64{seed[0], uint64(i) + seed[1]}, bestScore)
+		go func(prob Problem, length, it uint, sos *float64, best *Program, mut *sync.Mutex, cb Callback, bestScore *uint64) {
+			MinimizeCommon(prob, length, it, sos, best, mut, cb, [2]uint64{seed[0], uint64(i) + seed[1]}, bestScore)
 			wg.Done()
-		}(prob, length, iter, &sos, &best, &mut, cb, &bestScore)
+		}(prob, length, it, &sos, &best, &mut, cb, &bestScore)
 	}
 
 	wg.Wait()
