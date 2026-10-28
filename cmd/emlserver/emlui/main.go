@@ -27,7 +27,7 @@ func main() {
 	lambdaInput := document.Call("getElementById", "lambda")
 	if lambdaInput.Get("value").String() != "" {
 		var l float64
-		if _, err := json.Unmarshal([]byte(lambdaInput.Get("value").String()), &l); err == nil {
+		if err := json.Unmarshal([]byte(lambdaInput.Get("value").String()), &l); err == nil {
 			lambda = l
 		}
 	}
