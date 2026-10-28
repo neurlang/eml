@@ -8,7 +8,7 @@ type Callback func(prog []byte, sos float64, beta, rho uint, seed0, seed1 uint64
 
 type Problem [][2]float64
 
-func Minimize(prob Problem, length, iters uint, sos *float64, mut *sync.Mutex, cb Callback, seed [2]uint64) (p Program) {
+func MinimizeCommon(prob Problem, length, iters uint, sos *float64, best *Program, mut *sync.Mutex, cb Callback, seed [2]uint64) {
 
 	mut.Lock()
 	var sossos = *sos
@@ -36,18 +36,25 @@ outer:
 
 		mut.Lock()
 		if *sos > sum {
-			p = candidate
-			cb(p, sum, i, 0, seed[0], seed[1])
+			*best = candidate
+			cb(*best, sum, i, 0, seed[0], seed[1])
 			*sos = sum
 			sossos = sum
 		} else {
 			if sossos != *sos {
 				sossos = *sos
-				p = nil
 			}
 		}
 		mut.Unlock()
 	}
+}
+
+func Minimize(prob Problem, length, iters uint, sos *float64, mut *sync.Mutex, cb Callback, seed [2]uint64) (p Program) {
+	var best Program
+	MinimizeCommon(prob, length, iters, sos, &best, mut, cb, seed)
+	mut.Lock()
+	p = best
+	mut.Unlock()
 	return
 }
 
@@ -57,22 +64,24 @@ func MinimizeThreaded(prob Problem, length, iters uint, sos float64, cb Callback
 	iter := iters / uint(procs)
 	var mut sync.Mutex
 	var wg sync.WaitGroup
+	var best Program
 
 	for i := 0; i < procs; i++ {
 		wg.Add(1)
-		go func(prob Problem, length, iters uint, sos *float64, mut *sync.Mutex, cb Callback) {
-			prog := Minimize(prob, length, iter, sos, mut, cb, [2]uint64{seed[0], uint64(i) + seed[1]})
-			if prog != nil {
-				mut.Lock()
-				p = prog
-				newsos = *sos
-				mut.Unlock()
-			}
+		go func(prob Problem, length, iters uint, sos *float64, best *Program, mut *sync.Mutex, cb Callback) {
+			MinimizeCommon(prob, length, iter, sos, best, mut, cb, [2]uint64{seed[0], uint64(i) + seed[1]})
 			wg.Done()
-		}(prob, length, iter, &sos, &mut, cb)
+		}(prob, length, iter, &sos, &best, &mut, cb)
 	}
 
 	wg.Wait()
+
+	mut.Lock()
+	if best != nil {
+		p = best
+		newsos = sos
+	}
+	mut.Unlock()
 
 	return
 }
