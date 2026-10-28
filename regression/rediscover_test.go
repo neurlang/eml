@@ -30,7 +30,7 @@ func runRoundsComplex(prob ProblemComplex, length, iters, rounds uint, seed [2]u
 	work := make(ProblemComplex, len(prob))
 	copy(work, prob)
 
-	p, _ := MinimizeRoundsComplex(work, length, iters, rounds, math.Inf(1), func([]byte, float64, uint, uint, uint64, uint64) {}, seed)
+	p, _ := MinimizeRoundsComplex(work, length, iters, rounds, math.Inf(1), nil, seed)
 	return p, maxErr(p, prob)
 }
 

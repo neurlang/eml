@@ -41,7 +41,9 @@ outer:
 		if *sos > sum {
 			atomic.StoreUint64(bestScore, math.Float64bits(sum))
 			*best = candidate
-			cb(*best, sum, i, 0, seed[0], seed[1])
+			if cb != nil {
+				cb(*best, sum, i, 0, seed[0], seed[1])
+			}
 			*sos = sum
 		}
 		mut.Unlock()
@@ -101,7 +103,9 @@ func MinimizeRounds(prob Problem, length, iters, rounds uint, sos float64, cb Ca
 	for r := uint(0); r < rounds; r++ {
 		var prog Program
 		prog, newsos = MinimizeThreaded(prob, length, iters, sos, func(prog []byte, sos float64, beta, rho uint, seed0, seed1 uint64) {
-			cb(prog, sos, beta, r, seed0, seed1)
+			if cb != nil {
+				cb(prog, sos, beta, r, seed0, seed1)
+			}
 		}, seed)
 
 		if newsos >= sos {
