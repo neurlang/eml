@@ -128,7 +128,7 @@ func validateLengths(xs, ys complexSlice) error {
 
 func main() {
 	var xs, ys complexSlice
-	var a, r, b, s, t int
+	var a, r, b, s, t, g int
 	var exp, log = "exp", "log"
 	var js bool
 	flag.Var(&xs, "x", "function inputs")
@@ -138,6 +138,7 @@ func main() {
 	flag.IntVar(&b, "b", 1, "beta (brute forcing iterations)")
 	flag.IntVar(&s, "s", -1, "seed (unused for random seed)")
 	flag.IntVar(&t, "t", 0, "thread (second seed component)")
+	flag.IntVar(&g, "g", 2, "gamma (consecutive stalled rounds before stopping)")
 	flag.BoolVar(&js, "json", false, "json (dump format)")
 	flag.StringVar(&exp, "e", "exp", "exp (function name)")
 	flag.StringVar(&log, "l", "log", "log (function name)")
@@ -177,7 +178,7 @@ func main() {
 		problem = append(problem, [2]complex128{xs[i], ys[i]})
 	}
 
-	prog, sos := regression.MinimizeRoundsComplex(problem, uint(a), uint(b), uint(r), math.Inf(1), cb, seed)
+	prog, sos := regression.MinimizeRoundsComplex(problem, uint(a), uint(b), uint(r), uint(g), math.Inf(1), cb, seed)
 	cb(prog, sos, uint(b), uint(r), seed[0], seed[1])
 	if !js {
 		debugged := regression.Program(prog)

@@ -60,14 +60,6 @@ func Minimize(prob Problem, length, iters uint, sos *float64, mut *sync.Mutex, c
 	return
 }
 
-// MinimizeThreaded runs MinimizeCommon across runtime.GOMAXPROCS(0) workers
-// sharing the global best (program, score) under a mutex. Each candidate is
-// pruned against an atomic mirror of the best score, so workers track the
-// freshest global threshold at the cost of one lock-free atomic load per
-// candidate. The authoritative score check and program update still happen
-// under the mutex, preserving program-score consistency. Trade-off: the atomic
-// read avoids per-candidate mutex contention (most candidates prune early) while
-// keeping the threshold far fresher than the previous cached-on-improvement value.
 // distIter returns the number of iterations assigned to worker i when the
 // total budget iters is distributed across procs workers. It uses quotient and
 // remainder distribution: every worker gets iters/procs iterations, and the
@@ -83,7 +75,17 @@ func distIter(iters uint, procs, i int) uint {
 	return iter
 }
 
-func MinimizeThreaded(prob Problem, length, iters uint, sos float64, cb Callback, seed [2]uint64) (p Program, newsos float64) {
+// MinimizeThreaded runs MinimizeCommon across runtime.GOMAXPROCS(0) workers
+// sharing the global best (program, score) under a mutex. Each candidate is
+// pruned against an atomic mirror of the best score, so workers track the
+// freshest global threshold at the cost of one lock-free atomic load per
+// candidate. The authoritative score check and program update still happen
+// under the mutex, preserving program-score consistency. Trade-off: the atomic
+// read avoids per-candidate mutex contention (most candidates prune early) while
+// keeping the threshold far fresher than the previous cached-on-improvement value.
+// It returns found=true when any candidate beat the incoming sos threshold, so
+// callers can distinguish a productive round from a stalled one.
+func MinimizeThreaded(prob Problem, length, iters uint, sos float64, cb Callback, seed [2]uint64) (p Program, newsos float64, found bool) {
 
 	procs := runtime.GOMAXPROCS(0)
 	var mut sync.Mutex
@@ -106,26 +108,57 @@ func MinimizeThreaded(prob Problem, length, iters uint, sos float64, cb Callback
 	if best != nil {
 		p = best
 		newsos = sos
+		found = true
 	}
 	mut.Unlock()
 
 	return
 }
 
-func MinimizeRounds(prob Problem, length, iters, rounds uint, sos float64, cb Callback, seed [2]uint64) (p Program, newsos float64) {
+// nextStall tracks the count of consecutive rounds without improvement and
+// reports whether the search should stop. An improvement resets the counter; a
+// stalled round increments it; the search stops once the counter reaches
+// stagnate consecutive stalled rounds. A single stalled round never stops the
+// search unless stagnate is 0 or 1.
+func nextStall(found bool, stall, stagnate uint) (newStall uint, stop bool) {
+	if found {
+		return 0, false
+	}
+	stall++
+	if stall >= stagnate {
+		return stall, true
+	}
+	return stall, false
+}
+
+// MinimizeRounds runs up to rounds residual-fitting rounds. Each round searches
+// (via MinimizeThreaded) for a program that improves on the accumulated best
+// score sos. A round that finds an improvement resets the stagnation counter;
+// a round without improvement increments it. The search stops early once
+// stagnate consecutive rounds produce no improvement, so a stalled search does
+// not burn through the whole round budget.
+func MinimizeRounds(prob Problem, length, iters, rounds, stagnate uint, sos float64, cb Callback, seed [2]uint64) (p Program, newsos float64) {
 	newsos = sos
 	p = []byte{0}
+	stall := uint(0)
 	for r := uint(0); r < rounds; r++ {
 		var prog Program
-		prog, newsos = MinimizeThreaded(prob, length, iters, sos, func(prog []byte, sos float64, beta, rho uint, seed0, seed1 uint64) {
+		var found bool
+		prog, _, found = MinimizeThreaded(prob, length, iters, sos, func(prog []byte, sos float64, beta, rho uint, seed0, seed1 uint64) {
 			if cb != nil {
 				cb(prog, sos, beta, r, seed0, seed1)
 			}
 		}, seed)
 
-		if newsos >= sos {
+		var stop bool
+		stall, stop = nextStall(found, stall, stagnate)
+		if stop {
 			break
 		}
+		if !found {
+			continue
+		}
+
 		sos = 0
 
 		for i := range prob {

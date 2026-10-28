@@ -69,8 +69,9 @@ func MinimizeComplex(prob ProblemComplex, length, iters uint, sos *float64, mut 
 // workers prune each candidate against an atomic mirror of the global best
 // score (one lock-free load per candidate) while the authoritative score check
 // and program update stay under the mutex, keeping the returned program and
-// score synchronized.
-func MinimizeThreadedComplex(prob ProblemComplex, length, iters uint, sos float64, cb Callback, seed [2]uint64) (p Program, newsos float64) {
+// score synchronized. It returns found=true when any candidate beat the
+// incoming sos threshold.
+func MinimizeThreadedComplex(prob ProblemComplex, length, iters uint, sos float64, cb Callback, seed [2]uint64) (p Program, newsos float64, found bool) {
 
 	procs := runtime.GOMAXPROCS(0)
 	var mut sync.Mutex
@@ -93,26 +94,38 @@ func MinimizeThreadedComplex(prob ProblemComplex, length, iters uint, sos float6
 	if best != nil {
 		p = best
 		newsos = sos
+		found = true
 	}
 	mut.Unlock()
 
 	return
 }
 
-func MinimizeRoundsComplex(prob ProblemComplex, length, iters, rounds uint, sos float64, cb Callback, seed [2]uint64) (p Program, newsos float64) {
+// MinimizeRoundsComplex is the complex-domain analogue of MinimizeRounds: it
+// runs up to rounds residual-fitting rounds and stops early once stagnate
+// consecutive rounds produce no improvement.
+func MinimizeRoundsComplex(prob ProblemComplex, length, iters, rounds, stagnate uint, sos float64, cb Callback, seed [2]uint64) (p Program, newsos float64) {
 	newsos = sos
 	p = []byte{0}
+	stall := uint(0)
 	for r := uint(0); r < rounds; r++ {
 		var prog Program
-		prog, newsos = MinimizeThreadedComplex(prob, length, iters, sos, func(prog []byte, sos float64, beta, rho uint, seed0, seed1 uint64) {
+		var found bool
+		prog, _, found = MinimizeThreadedComplex(prob, length, iters, sos, func(prog []byte, sos float64, beta, rho uint, seed0, seed1 uint64) {
 			if cb != nil {
 				cb(prog, sos, beta, r, seed0, seed1)
 			}
 		}, seed)
 
-		if newsos >= sos {
+		var stop bool
+		stall, stop = nextStall(found, stall, stagnate)
+		if stop {
 			break
 		}
+		if !found {
+			continue
+		}
+
 		sos = 0
 
 		for i := range prob {

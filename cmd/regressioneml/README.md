@@ -55,6 +55,11 @@ You provide one or more `(x, y)` training pairs.
   **beta (brute forcing iterations)** – search intensity per round
   Default: `1`
 
+* `-g int`
+  **gamma (consecutive stalled rounds)** – number of consecutive rounds without
+  improvement before the search stops early
+  Default: `2`
+
 * `-s int`
   Random seed for reproducibility
 
@@ -166,6 +171,7 @@ Unlike numeric regression:
 * Large `-b` values significantly increase search quality but are computationally expensive
 * Increasing `-a` allows more complex expressions per round
 * More `-r` improves long-term convergence at the cost of runtime
+* `-g` controls how many consecutive rounds without improvement terminate the search early (a single stalled round never stops it)
 * Results may vary due to stochastic search unless `-s` is fixed
 
 ---
