@@ -1,0 +1,29 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 1.22.x is the minimum supported Go version; the rest guard against regressions.
+        go: ['1.22.x', '1.23.x', '1.24.x', 'latest']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+      - name: Unit and fuzz tests
+        run: go test ./regression/
+      - name: Build CLI solver
+        run: go build ./cmd/regressioneml/
+      - name: Build WASM UI
+        working-directory: cmd/emlserver
+        run: GOOS=js GOARCH=wasm go build -o emlui.wasm ./emlui/
+      - name: Build static server
+        working-directory: cmd/emlserver
+        run: go build -o emlserver .
