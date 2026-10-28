@@ -23,11 +23,19 @@ func main() {
 	var b uint = 100000
 	var r uint = 10
 	var g uint = 2
-	var cb = func(prog []byte, sos float64, beta, rho uint, seed0, seed1 uint64) {
+	var lambda float64 = 0
+	lambdaInput := document.Call("getElementById", "lambda")
+	if lambdaInput.Get("value").String() != "" {
+		var l float64
+		if _, err := json.Unmarshal([]byte(lambdaInput.Get("value").String()), &l); err == nil {
+			lambda = l
+		}
+	}
+	var cb = func(prog []byte, sos float64, size uint, beta, rho uint, seed0, seed1 uint64) {
 		percent := (100 * (beta + uint(b)*rho)) / (uint(b) * uint(r+1))
 		debugged := regression.Program(prog)
 		go input.Set("innerHTML", fmt.Sprint(percent)+"%")
-		go output.Set("innerHTML", "<small>loss: "+fmt.Sprint(sos)+"</small> "+debugged.Debug("exp", "log"))
+		go output.Set("innerHTML", "<small>loss: "+fmt.Sprint(sos+lambda*float64(size))+"</small> "+debugged.Debug("exp", "log"))
 	}
 	var seed [2]uint64
 	for i := range seed {
@@ -41,8 +49,11 @@ func main() {
 		}
 	}
 	go func() {
-		var prog, sos = regression.MinimizeRoundsComplex(prob.AsComplex(), a, b, r, g, math.Inf(1), cb, seed)
-		cb(prog, sos, b, r, seed[0], seed[1])
+		var opts regression.MinimizeOptions
+		opts.Lambda = lambda
+		opts.Size = 1
+		var prog, sos = regression.MinimizeRoundsComplex(prob.AsComplex(), a, b, r, g, math.Inf(1), cb, seed, opts)
+		cb(prog, sos, uint(len(prog)), b, r, seed[0], seed[1])
 	}()
 	select {}
 }

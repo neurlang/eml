@@ -12,7 +12,7 @@ func TestZeroSOS(t *testing.T) {
 	for i := range xs {
 		prob = append(prob, [2]float64{xs[i], ys[i]})
 	}
-	_, sos := MinimizeRounds(prob, 10, 10, 1, 2, math.Inf(1), nil, [2]uint64{0, 0})
+	_, sos := MinimizeRounds(prob, 10, 10, 1, 2, math.Inf(1), nil, [2]uint64{0, 0}, MinimizeOptions{})
 	if sos == 0 {
 		t.Fatalf("SOS zero")
 	}
@@ -28,10 +28,10 @@ func TestMinimizeRoundsNilCallback(t *testing.T) {
 	for i := range xs {
 		prob = append(prob, [2]float64{xs[i], ys[i]})
 	}
-	if _, sos := MinimizeRounds(prob, 10, 10, 1, 2, math.Inf(1), nil, [2]uint64{0, 0}); sos == 0 {
+	if _, sos := MinimizeRounds(prob, 10, 10, 1, 2, math.Inf(1), nil, [2]uint64{0, 0}, MinimizeOptions{}); sos == 0 {
 		t.Fatalf("SOS zero")
 	}
-	if _, sos := MinimizeRoundsComplex(prob.AsComplex(), 10, 10, 1, 2, math.Inf(1), nil, [2]uint64{0, 0}); sos == 0 {
+	if _, sos := MinimizeRoundsComplex(prob.AsComplex(), 10, 10, 1, 2, math.Inf(1), nil, [2]uint64{0, 0}, MinimizeOptions{}); sos == 0 {
 		t.Fatalf("complex SOS zero")
 	}
 }
@@ -52,7 +52,7 @@ func TestMinimizeRoundsPreservesProblem(t *testing.T) {
 
 	seed := [2]uint64{0, 0}
 	// Multiple rounds so a found round mutates prob if the bug is present.
-	_, _ = MinimizeRounds(prob, 10, 2000, 20, 2, math.Inf(1), nil, seed)
+	_, _ = MinimizeRounds(prob, 10, 2000, 20, 2, math.Inf(1), nil, seed, MinimizeOptions{})
 	for i := range orig {
 		if prob[i] != orig[i] {
 			t.Fatalf("real: point %d mutated from %v to %v", i, orig[i], prob[i])
@@ -62,7 +62,7 @@ func TestMinimizeRoundsPreservesProblem(t *testing.T) {
 	cprob := prob.AsComplex()
 	corig := make(ProblemComplex, len(cprob))
 	copy(corig, cprob)
-	_, _ = MinimizeRoundsComplex(cprob, 10, 2000, 20, 2, math.Inf(1), nil, seed)
+	_, _ = MinimizeRoundsComplex(cprob, 10, 2000, 20, 2, math.Inf(1), nil, seed, MinimizeOptions{})
 	for i := range corig {
 		if cprob[i] != corig[i] {
 			t.Fatalf("complex: point %d mutated from %v to %v", i, corig[i], cprob[i])
@@ -86,7 +86,7 @@ func TestMinimizeThreadedBestSync(t *testing.T) {
 	}
 
 	for trial := uint64(0); trial < 50; trial++ {
-		p, newsos, found := MinimizeThreaded(prob, 10, 2000, math.Inf(1), nil, [2]uint64{trial, 7})
+		p, newsos, found := MinimizeThreaded(prob, 10, 2000, math.Inf(1), nil, [2]uint64{trial, 7}, MinimizeOptions{})
 
 		if p == nil {
 			if newsos != 0 {
@@ -168,12 +168,12 @@ func TestMinimizeThreadedIterDistribution(t *testing.T) {
 	}
 	var count int64
 	var mu sync.Mutex
-	cb := func(prog []byte, sos float64, beta, rho uint, seed0, seed1 uint64) {
+	cb := func(prog []byte, sos float64, size uint, beta, rho uint, seed0, seed1 uint64) {
 		mu.Lock()
 		count++
 		mu.Unlock()
 	}
-	_, _, _ = MinimizeThreaded(prob, 10, 7, math.Inf(1), cb, [2]uint64{0, 0})
+	_, _, _ = MinimizeThreaded(prob, 10, 7, math.Inf(1), cb, [2]uint64{0, 0}, MinimizeOptions{})
 	if count == 0 {
 		t.Fatalf("iters=7 procs=8: no candidates evaluated")
 	}
@@ -195,11 +195,11 @@ func TestMinimizeThreadedFoundFlag(t *testing.T) {
 	}
 	seed := [2]uint64{0, 0}
 
-	if p, newsos, found := MinimizeThreaded(prob, 10, 2000, 0, nil, seed); found {
+	if p, newsos, found := MinimizeThreaded(prob, 10, 2000, 0, nil, seed, MinimizeOptions{}); found {
 		t.Fatalf("zero threshold: reported improvement %v but none is possible (p=%v newsos=%v)", found, p != nil, newsos)
 	}
 
-	p, newsos, found := MinimizeThreaded(prob, 10, 2000, math.Inf(1), nil, seed)
+	p, newsos, found := MinimizeThreaded(prob, 10, 2000, math.Inf(1), nil, seed, MinimizeOptions{})
 	if !found {
 		t.Fatalf("infinite threshold: expected an improvement, got none")
 	}
@@ -309,14 +309,14 @@ func TestMinimizeRoundsImprovementsDoNotStall(t *testing.T) {
 		work := make(Problem, len(prob))
 		copy(work, prob)
 		maxRho := uint(0)
-		cb := func(prog []byte, sos float64, beta, rho uint, seed0, seed1 uint64) {
+		cb := func(prog []byte, sos float64, size uint, beta, rho uint, seed0, seed1 uint64) {
 			if rho > maxRho {
 				maxRho = rho
 			}
 		}
 		// length 20 (not 10) so every round finds an improvement under seed [0,0]
 		// at GOMAXPROCS=1; length 10 stalls after the first round.
-		_, _ = MinimizeRounds(work, 20, 2000, rounds, stagnate, math.Inf(1), cb, seed)
+		_, _ = MinimizeRounds(work, 20, 2000, rounds, stagnate, math.Inf(1), cb, seed, MinimizeOptions{})
 		if maxRho != rounds-1 {
 			t.Fatalf("stagnate=%d: expected all %d rounds to improve (max rho %d), got %d",
 				stagnate, rounds, rounds-1, maxRho)

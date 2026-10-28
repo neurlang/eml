@@ -5,14 +5,54 @@ import "sync"
 import "math"
 import "sync/atomic"
 
-type Callback func(prog []byte, sos float64, beta, rho uint, seed0, seed1 uint64)
+// Callback is invoked on each improvement. It receives the candidate program
+// (or, from MinimizeRounds, the candidate with its size filled in), its raw
+// sum-of-squared-error sos, and the token count size of the entire composed
+// program so far (K of the full expression, not the candidate alone). beta and
+// rho are the iteration and round indices, seed0/seed1 the seed components.
+type Callback func(prog []byte, sos float64, size uint, beta, rho uint, seed0, seed1 uint64)
 
 type Problem [][2]float64
 
-func MinimizeCommon(prob Problem, length, iters uint, sos *float64, best *Program, mut *sync.Mutex, cb Callback, seed [2]uint64, bestScore *uint64) {
+// MinimizeOptions configures the complexity (size) penalty applied to the
+// compared loss: total = sos + Lambda * size(composed). Lambda == 0 reproduces
+// the penalty-free behavior exactly. Size is the token count K of the composed
+// program P accumulated so far (the identity program x has size 1); it is used
+// so the penalty is charged on the entire composed expression being optimized,
+// never on the current round's candidate alone.
+type MinimizeOptions struct {
+	Lambda float64
+	Size   uint
+}
+
+// composedSize returns the token count K of the composed program Join(c, P)
+// where the accumulated program P has size pSize. Replacing c's variable leaf
+// with P grows the size by len(c)-1, so K = len(c)+pSize-1; a constant
+// candidate (no variable leaf) is not grown into P by Join, so its composed
+// size is just pSize.
+func composedSize(c Program, pSize uint) uint {
+	for i := range c {
+		if c[i] == EXX {
+			return uint(len(c)) + pSize - 1
+		}
+	}
+	return pSize
+}
+
+// hasVar reports whether the program contains a variable (x) leaf.
+func hasVar(c Program) bool {
+	for i := range c {
+		if c[i] == EXX {
+			return true
+		}
+	}
+	return false
+}
+
+func MinimizeCommon(prob Problem, length, iters uint, sos *float64, best *Program, mut *sync.Mutex, cb Callback, seed [2]uint64, bestScore *uint64, opts MinimizeOptions) {
 
 	mut.Lock()
-	atomic.StoreUint64(bestScore, math.Float64bits(*sos))
+	atomic.StoreUint64(bestScore, math.Float64bits(*sos+opts.Lambda*float64(opts.Size)))
 	mut.Unlock()
 	r := NewRandomizer(seed)
 
@@ -20,7 +60,20 @@ outer:
 	for i := uint(0); i < iters; i++ {
 		candidate := r.New(length)
 
+		// The penalty is charged on the full composed expression Join(c, P):
+		// composed size is composedSize(candidate, opts.Size) and the candidate's
+		// total is sos(c) + Lambda*that size. A candidate improves only if its
+		// total is below the current best total sos(P)+Lambda*len(P), so prune
+		// once its running sos exceeds that best total minus the candidate's
+		// penalty. A non-positive threshold means no candidate can win, so skip
+		// it without evaluating any points (also speeds up large-Lambda runs).
+		composed := composedSize(candidate, opts.Size)
+		cPen := opts.Lambda * float64(composed)
 		var sossos = math.Float64frombits(atomic.LoadUint64(bestScore))
+		threshold := sossos - cPen
+		if threshold <= 0 {
+			continue outer
+		}
 
 		var sum float64
 
@@ -29,7 +82,7 @@ outer:
 			delta := tested.Evaluate(prob[j][0]) - prob[j][1]
 			sq := delta * delta
 			sum += sq
-			if sum > sossos {
+			if sum > threshold {
 				continue outer
 			}
 			if math.IsNaN(sum) {
@@ -37,12 +90,13 @@ outer:
 			}
 		}
 
+		total := sum + cPen
 		mut.Lock()
-		if *sos > sum {
-			atomic.StoreUint64(bestScore, math.Float64bits(sum))
+		if *sos+opts.Lambda*float64(opts.Size) > total {
+			atomic.StoreUint64(bestScore, math.Float64bits(total))
 			*best = candidate
 			if cb != nil {
-				cb(*best, sum, i, 0, seed[0], seed[1])
+				cb(*best, sum, composed, i, 0, seed[0], seed[1])
 			}
 			*sos = sum
 		}
@@ -50,10 +104,10 @@ outer:
 	}
 }
 
-func Minimize(prob Problem, length, iters uint, sos *float64, mut *sync.Mutex, cb Callback, seed [2]uint64) (p Program) {
+func Minimize(prob Problem, length, iters uint, sos *float64, mut *sync.Mutex, cb Callback, seed [2]uint64, opts MinimizeOptions) (p Program) {
 	var best Program
 	var bestScore uint64
-	MinimizeCommon(prob, length, iters, sos, &best, mut, cb, seed, &bestScore)
+	MinimizeCommon(prob, length, iters, sos, &best, mut, cb, seed, &bestScore, opts)
 	mut.Lock()
 	p = best
 	mut.Unlock()
@@ -85,7 +139,7 @@ func distIter(iters uint, procs, i int) uint {
 // keeping the threshold far fresher than the previous cached-on-improvement value.
 // It returns found=true when any candidate beat the incoming sos threshold, so
 // callers can distinguish a productive round from a stalled one.
-func MinimizeThreaded(prob Problem, length, iters uint, sos float64, cb Callback, seed [2]uint64) (p Program, newsos float64, found bool) {
+func MinimizeThreaded(prob Problem, length, iters uint, sos float64, cb Callback, seed [2]uint64, opts MinimizeOptions) (p Program, newsos float64, found bool) {
 
 	procs := runtime.GOMAXPROCS(0)
 	var mut sync.Mutex
@@ -96,10 +150,10 @@ func MinimizeThreaded(prob Problem, length, iters uint, sos float64, cb Callback
 	for i := 0; i < procs; i++ {
 		it := distIter(iters, procs, i)
 		wg.Add(1)
-		go func(prob Problem, length, it uint, sos *float64, best *Program, mut *sync.Mutex, cb Callback, bestScore *uint64) {
-			MinimizeCommon(prob, length, it, sos, best, mut, cb, [2]uint64{seed[0], uint64(i) + seed[1]}, bestScore)
+		go func(prob Problem, length, it uint, sos *float64, best *Program, mut *sync.Mutex, cb Callback, bestScore *uint64, opts MinimizeOptions) {
+			MinimizeCommon(prob, length, it, sos, best, mut, cb, [2]uint64{seed[0], uint64(i) + seed[1]}, bestScore, opts)
 			wg.Done()
-		}(prob, length, it, &sos, &best, &mut, cb, &bestScore)
+		}(prob, length, it, &sos, &best, &mut, cb, &bestScore, opts)
 	}
 
 	wg.Wait()
@@ -137,7 +191,7 @@ func nextStall(found bool, stall, stagnate uint) (newStall uint, stop bool) {
 // a round without improvement increments it. The search stops early once
 // stagnate consecutive rounds produce no improvement, so a stalled search does
 // not burn through the whole round budget.
-func MinimizeRounds(prob Problem, length, iters, rounds, stagnate uint, sos float64, cb Callback, seed [2]uint64) (p Program, newsos float64) {
+func MinimizeRounds(prob Problem, length, iters, rounds, stagnate uint, sos float64, cb Callback, seed [2]uint64, opts MinimizeOptions) (p Program, newsos float64) {
 	prob = append(Problem(nil), prob...)
 	newsos = sos
 	p = []byte{0}
@@ -145,11 +199,13 @@ func MinimizeRounds(prob Problem, length, iters, rounds, stagnate uint, sos floa
 	for r := uint(0); r < rounds; r++ {
 		var prog Program
 		var found bool
-		prog, _, found = MinimizeThreaded(prob, length, iters, sos, func(prog []byte, sos float64, beta, rho uint, seed0, seed1 uint64) {
+		roundOpts := opts
+		roundOpts.Size = uint(len(p))
+		prog, _, found = MinimizeThreaded(prob, length, iters, sos, func(prog []byte, sos float64, size uint, beta, rho uint, seed0, seed1 uint64) {
 			if cb != nil {
-				cb(prog, sos, beta, r, seed0, seed1)
+				cb(prog, sos, size, beta, r, seed0, seed1)
 			}
-		}, seed)
+		}, seed, roundOpts)
 
 		var stop bool
 		stall, stop = nextStall(found, stall, stagnate)
@@ -170,7 +226,10 @@ func MinimizeRounds(prob Problem, length, iters, rounds, stagnate uint, sos floa
 			sos += sq
 		}
 		p = Join(prog, p)
-		if sos == 0 {
+		// The "solved" early-exit uses the full total, never raw sos: with the
+		// penalty the composed best is sos + Lambda*len(p), so a perfect fit
+		// (sos==0) only stops when the penalty is also zero.
+		if sos+opts.Lambda*float64(len(p)) <= 0 {
 			break
 		}
 		newsos = sos

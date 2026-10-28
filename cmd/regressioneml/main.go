@@ -36,6 +36,8 @@ type callback_data struct {
 	Function     string
 	Seed         uint64
 	Thread       uint64
+	Size         uint
+	Loss         JSONFloat
 }
 
 type JSONFloat float64
@@ -82,11 +84,11 @@ func progressbar(sos float64, pos, max uint64, name string) {
 	}
 }
 
-func callback_progress(prog []byte, sos float64, beta, rho uint, exp, log string, percent uint, _, _ uint64) {
+func callback_progress(prog []byte, sos float64, size uint, beta, rho uint, exp, log string, percent uint, _, _ uint64, lambda float64) {
 	debugged := regression.Program(prog)
 	progressbar(sos, uint64(percent), 100, debugged.Debug(exp, log))
 }
-func callback_json(prog []byte, sos float64, beta, rho uint, exp, log string, percent uint, seed0, seed1 uint64) {
+func callback_json(prog []byte, sos float64, size uint, beta, rho uint, exp, log string, percent uint, seed0, seed1 uint64, lambda float64) {
 
 	debugged := regression.Program(prog)
 	evaluated := regression.Program(prog)
@@ -105,6 +107,8 @@ func callback_json(prog []byte, sos float64, beta, rho uint, exp, log string, pe
 		Percent:      percent,
 		Seed:         seed0,
 		Thread:       seed1,
+		Size:         size,
+		Loss:         JSONFloat(sos + lambda*float64(size)),
 	}
 	data, err := json.Marshal(&d)
 	if err != nil {
@@ -129,6 +133,7 @@ func validateLengths(xs, ys complexSlice) error {
 func main() {
 	var xs, ys complexSlice
 	var a, r, b, s, t, g int
+	var c float64
 	var exp, log = "exp", "log"
 	var js bool
 	flag.Var(&xs, "x", "function inputs")
@@ -139,6 +144,7 @@ func main() {
 	flag.IntVar(&s, "s", -1, "seed (unused for random seed)")
 	flag.IntVar(&t, "t", 0, "thread (second seed component)")
 	flag.IntVar(&g, "g", 2, "gamma (consecutive stalled rounds before stopping)")
+	flag.Float64Var(&c, "c", 0, "lambda (complexity penalty per token)")
 	flag.BoolVar(&js, "json", false, "json (dump format)")
 	flag.StringVar(&exp, "e", "exp", "exp (function name)")
 	flag.StringVar(&log, "l", "log", "log (function name)")
@@ -165,12 +171,12 @@ func main() {
 	var problem regression.ProblemComplex
 	var cb regression.Callback
 	if js {
-		cb = func(prog []byte, sos float64, beta, rho uint, seed0, seed1 uint64) {
-			callback_json(prog, sos, beta, rho, exp, log, (100*(beta+uint(b)*rho))/(uint(b)*uint(r+1)), seed0, seed1)
+		cb = func(prog []byte, sos float64, size uint, beta, rho uint, seed0, seed1 uint64) {
+			callback_json(prog, sos, size, beta, rho, exp, log, (100*(beta+uint(b)*rho))/(uint(b)*uint(r+1)), seed0, seed1, c)
 		}
 	} else {
-		cb = func(prog []byte, sos float64, beta, rho uint, seed0, seed1 uint64) {
-			callback_progress(prog, sos, beta, rho, exp, log, (100*(beta+uint(b)*rho))/(uint(b)*uint(r+1)), seed0, seed1)
+		cb = func(prog []byte, sos float64, size uint, beta, rho uint, seed0, seed1 uint64) {
+			callback_progress(prog, sos, size, beta, rho, exp, log, (100*(beta+uint(b)*rho))/(uint(b)*uint(r+1)), seed0, seed1, c)
 		}
 	}
 
@@ -178,8 +184,11 @@ func main() {
 		problem = append(problem, [2]complex128{xs[i], ys[i]})
 	}
 
-	prog, sos := regression.MinimizeRoundsComplex(problem, uint(a), uint(b), uint(r), uint(g), math.Inf(1), cb, seed)
-	cb(prog, sos, uint(b), uint(r), seed[0], seed[1])
+	var opts regression.MinimizeOptions
+	opts.Lambda = c
+	opts.Size = 1
+	prog, sos := regression.MinimizeRoundsComplex(problem, uint(a), uint(b), uint(r), uint(g), math.Inf(1), cb, seed, opts)
+	cb(prog, sos, uint(len(prog)), uint(b), uint(r), seed[0], seed[1])
 	if !js {
 		debugged := regression.Program(prog)
 		evaluated := regression.Program(prog)
@@ -187,6 +196,8 @@ func main() {
 		fmt.Println("--- RESULTS ---")
 		fmt.Println("Final formula:", debugged.Debug(exp, log))
 		fmt.Println("Error Sum Of Squares:", sos)
+		fmt.Printf("Complexity penalty per token (lambda): %g\n", c)
+		fmt.Println("Size (tokens of full expression):", len(prog))
 		fmt.Println("Formula eval at 0:", evaluated.EvaluateComplex(0))
 		for i := range xs {
 			evaluated2 := regression.Program(prog)

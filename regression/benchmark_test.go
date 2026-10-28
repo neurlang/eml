@@ -37,9 +37,9 @@ func BenchmarkMinimizeThreaded(b *testing.B) {
 
 			var improvements uint64
 			for i := 0; i < b.N; i++ {
-				MinimizeThreaded(benchmarkProblem(), 10, 2000, math.Inf(1), func([]byte, float64, uint, uint, uint64, uint64) {
+				MinimizeThreaded(benchmarkProblem(), 10, 2000, math.Inf(1), func([]byte, float64, uint, uint, uint, uint64, uint64) {
 					atomic.AddUint64(&improvements, 1)
-				}, [2]uint64{uint64(i), 7})
+				}, [2]uint64{uint64(i), 7}, MinimizeOptions{})
 			}
 			b.ReportMetric(float64(improvements)/float64(b.N), "improvements/op")
 		})
