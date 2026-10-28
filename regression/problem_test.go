@@ -293,6 +293,15 @@ func TestMinimizeRoundsImprovementsDoNotStall(t *testing.T) {
 	for i := range xs {
 		prob = append(prob, [2]float64{xs[i], ys[i]})
 	}
+	// Pin to a single worker so the search runs deterministically regardless of
+	// the host's core count: the RNG sequence (and hence which rounds improve)
+	// depends on the per-worker seeds derived from GOMAXPROCS. With GOMAXPROCS=1
+	// the whole search uses one seed [0,0], making the expectation stable across
+	// CI machines and Go versions.
+	old := runtime.GOMAXPROCS(0)
+	runtime.GOMAXPROCS(1)
+	defer runtime.GOMAXPROCS(old)
+
 	seed := [2]uint64{0, 0}
 	rounds := uint(20)
 
@@ -305,7 +314,9 @@ func TestMinimizeRoundsImprovementsDoNotStall(t *testing.T) {
 				maxRho = rho
 			}
 		}
-		_, _ = MinimizeRounds(work, 10, 2000, rounds, stagnate, math.Inf(1), cb, seed)
+		// length 20 (not 10) so every round finds an improvement under seed [0,0]
+		// at GOMAXPROCS=1; length 10 stalls after the first round.
+		_, _ = MinimizeRounds(work, 20, 2000, rounds, stagnate, math.Inf(1), cb, seed)
 		if maxRho != rounds-1 {
 			t.Fatalf("stagnate=%d: expected all %d rounds to improve (max rho %d), got %d",
 				stagnate, rounds, rounds-1, maxRho)

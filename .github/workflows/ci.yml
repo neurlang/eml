@@ -11,7 +11,7 @@ jobs:
       fail-fast: false
       matrix:
         # 1.22.x is the minimum supported Go version; the rest guard against regressions.
-        go: ['1.22.x', '1.23.x', '1.24.x', 'latest']
+        go: ['1.22.x', '1.23.x', '1.24.x', '1.25.x', '1.26.x']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
