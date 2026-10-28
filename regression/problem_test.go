@@ -36,6 +36,40 @@ func TestMinimizeRoundsNilCallback(t *testing.T) {
 	}
 }
 
+// TestMinimizeRoundsPreservesProblem verifies that MinimizeRounds does not
+// mutate the caller-provided problem (issue 8): it works on a copy, so the
+// original data points remain unchanged after the minimization runs.
+func TestMinimizeRoundsPreservesProblem(t *testing.T) {
+	xs := []float64{1, 2, 3}
+	ys := []float64{1213, 846, 6479}
+	prob := Problem{}
+	for i := range xs {
+		prob = append(prob, [2]float64{xs[i], ys[i]})
+	}
+
+	orig := make(Problem, len(prob))
+	copy(orig, prob)
+
+	seed := [2]uint64{0, 0}
+	// Multiple rounds so a found round mutates prob if the bug is present.
+	_, _ = MinimizeRounds(prob, 10, 2000, 20, 2, math.Inf(1), nil, seed)
+	for i := range orig {
+		if prob[i] != orig[i] {
+			t.Fatalf("real: point %d mutated from %v to %v", i, orig[i], prob[i])
+		}
+	}
+
+	cprob := prob.AsComplex()
+	corig := make(ProblemComplex, len(cprob))
+	copy(corig, cprob)
+	_, _ = MinimizeRoundsComplex(cprob, 10, 2000, 20, 2, math.Inf(1), nil, seed)
+	for i := range corig {
+		if cprob[i] != corig[i] {
+			t.Fatalf("complex: point %d mutated from %v to %v", i, corig[i], cprob[i])
+		}
+	}
+}
+
 // TestMinimizeThreadedBestSync verifies that MinimizeThreaded returns a
 // program whose actual score equals the reported newsos, i.e. the best
 // program and score stay synchronized under concurrent updates.

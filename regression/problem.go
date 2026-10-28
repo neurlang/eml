@@ -138,6 +138,7 @@ func nextStall(found bool, stall, stagnate uint) (newStall uint, stop bool) {
 // stagnate consecutive rounds produce no improvement, so a stalled search does
 // not burn through the whole round budget.
 func MinimizeRounds(prob Problem, length, iters, rounds, stagnate uint, sos float64, cb Callback, seed [2]uint64) (p Program, newsos float64) {
+	prob = append(Problem(nil), prob...)
 	newsos = sos
 	p = []byte{0}
 	stall := uint(0)

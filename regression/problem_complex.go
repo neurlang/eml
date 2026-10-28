@@ -105,6 +105,7 @@ func MinimizeThreadedComplex(prob ProblemComplex, length, iters uint, sos float6
 // runs up to rounds residual-fitting rounds and stops early once stagnate
 // consecutive rounds produce no improvement.
 func MinimizeRoundsComplex(prob ProblemComplex, length, iters, rounds, stagnate uint, sos float64, cb Callback, seed [2]uint64) (p Program, newsos float64) {
+	prob = append(ProblemComplex(nil), prob...)
 	newsos = sos
 	p = []byte{0}
 	stall := uint(0)
