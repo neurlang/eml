@@ -3,6 +3,7 @@ package regression
 import "runtime"
 import "sync"
 import "math"
+import "sync/atomic"
 
 type ProblemComplex [][2]complex128
 
@@ -13,16 +14,18 @@ func (p Problem) AsComplex() (c ProblemComplex) {
 	return
 }
 
-func MinimizeCommonComplex(prob ProblemComplex, length, iters uint, sos *float64, best *Program, mut *sync.Mutex, cb Callback, seed [2]uint64) {
+func MinimizeCommonComplex(prob ProblemComplex, length, iters uint, sos *float64, best *Program, mut *sync.Mutex, cb Callback, seed [2]uint64, bestScore *uint64) {
 
 	mut.Lock()
-	var sossos = *sos
+	atomic.StoreUint64(bestScore, math.Float64bits(*sos))
 	mut.Unlock()
 	r := NewRandomizer(seed)
 
 outer:
 	for i := uint(0); i < iters; i++ {
 		candidate := r.New(length)
+
+		var sossos = math.Float64frombits(atomic.LoadUint64(bestScore))
 
 		var sum float64
 
@@ -41,14 +44,10 @@ outer:
 
 		mut.Lock()
 		if *sos > sum {
+			atomic.StoreUint64(bestScore, math.Float64bits(sum))
 			*best = candidate
 			cb(*best, sum, i, 0, seed[0], seed[1])
 			*sos = sum
-			sossos = sum
-		} else {
-			if sossos != *sos {
-				sossos = *sos
-			}
 		}
 		mut.Unlock()
 	}
@@ -56,13 +55,19 @@ outer:
 
 func MinimizeComplex(prob ProblemComplex, length, iters uint, sos *float64, mut *sync.Mutex, cb Callback, seed [2]uint64) (p Program) {
 	var best Program
-	MinimizeCommonComplex(prob, length, iters, sos, &best, mut, cb, seed)
+	var bestScore uint64
+	MinimizeCommonComplex(prob, length, iters, sos, &best, mut, cb, seed, &bestScore)
 	mut.Lock()
 	p = best
 	mut.Unlock()
 	return
 }
 
+// MinimizeThreadedComplex is the complex-domain analogue of MinimizeThreaded:
+// workers prune each candidate against an atomic mirror of the global best
+// score (one lock-free load per candidate) while the authoritative score check
+// and program update stay under the mutex, keeping the returned program and
+// score synchronized.
 func MinimizeThreadedComplex(prob ProblemComplex, length, iters uint, sos float64, cb Callback, seed [2]uint64) (p Program, newsos float64) {
 
 	procs := runtime.GOMAXPROCS(0)
@@ -70,13 +75,14 @@ func MinimizeThreadedComplex(prob ProblemComplex, length, iters uint, sos float6
 	var mut sync.Mutex
 	var wg sync.WaitGroup
 	var best Program
+	var bestScore uint64
 
 	for i := 0; i < procs; i++ {
 		wg.Add(1)
-		go func(prob ProblemComplex, length, iters uint, sos *float64, best *Program, mut *sync.Mutex, cb Callback) {
-			MinimizeCommonComplex(prob, length, iter, sos, best, mut, cb, [2]uint64{seed[0], uint64(i) + seed[1]})
+		go func(prob ProblemComplex, length, iters uint, sos *float64, best *Program, mut *sync.Mutex, cb Callback, bestScore *uint64) {
+			MinimizeCommonComplex(prob, length, iter, sos, best, mut, cb, [2]uint64{seed[0], uint64(i) + seed[1]}, bestScore)
 			wg.Done()
-		}(prob, length, iter, &sos, &best, &mut, cb)
+		}(prob, length, iter, &sos, &best, &mut, cb, &bestScore)
 	}
 
 	wg.Wait()

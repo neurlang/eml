@@ -3,21 +3,24 @@ package regression
 import "runtime"
 import "sync"
 import "math"
+import "sync/atomic"
 
 type Callback func(prog []byte, sos float64, beta, rho uint, seed0, seed1 uint64)
 
 type Problem [][2]float64
 
-func MinimizeCommon(prob Problem, length, iters uint, sos *float64, best *Program, mut *sync.Mutex, cb Callback, seed [2]uint64) {
+func MinimizeCommon(prob Problem, length, iters uint, sos *float64, best *Program, mut *sync.Mutex, cb Callback, seed [2]uint64, bestScore *uint64) {
 
 	mut.Lock()
-	var sossos = *sos
+	atomic.StoreUint64(bestScore, math.Float64bits(*sos))
 	mut.Unlock()
 	r := NewRandomizer(seed)
 
 outer:
 	for i := uint(0); i < iters; i++ {
 		candidate := r.New(length)
+
+		var sossos = math.Float64frombits(atomic.LoadUint64(bestScore))
 
 		var sum float64
 
@@ -36,14 +39,10 @@ outer:
 
 		mut.Lock()
 		if *sos > sum {
+			atomic.StoreUint64(bestScore, math.Float64bits(sum))
 			*best = candidate
 			cb(*best, sum, i, 0, seed[0], seed[1])
 			*sos = sum
-			sossos = sum
-		} else {
-			if sossos != *sos {
-				sossos = *sos
-			}
 		}
 		mut.Unlock()
 	}
@@ -51,13 +50,22 @@ outer:
 
 func Minimize(prob Problem, length, iters uint, sos *float64, mut *sync.Mutex, cb Callback, seed [2]uint64) (p Program) {
 	var best Program
-	MinimizeCommon(prob, length, iters, sos, &best, mut, cb, seed)
+	var bestScore uint64
+	MinimizeCommon(prob, length, iters, sos, &best, mut, cb, seed, &bestScore)
 	mut.Lock()
 	p = best
 	mut.Unlock()
 	return
 }
 
+// MinimizeThreaded runs MinimizeCommon across runtime.GOMAXPROCS(0) workers
+// sharing the global best (program, score) under a mutex. Each candidate is
+// pruned against an atomic mirror of the best score, so workers track the
+// freshest global threshold at the cost of one lock-free atomic load per
+// candidate. The authoritative score check and program update still happen
+// under the mutex, preserving program-score consistency. Trade-off: the atomic
+// read avoids per-candidate mutex contention (most candidates prune early) while
+// keeping the threshold far fresher than the previous cached-on-improvement value.
 func MinimizeThreaded(prob Problem, length, iters uint, sos float64, cb Callback, seed [2]uint64) (p Program, newsos float64) {
 
 	procs := runtime.GOMAXPROCS(0)
@@ -65,13 +73,14 @@ func MinimizeThreaded(prob Problem, length, iters uint, sos float64, cb Callback
 	var mut sync.Mutex
 	var wg sync.WaitGroup
 	var best Program
+	var bestScore uint64
 
 	for i := 0; i < procs; i++ {
 		wg.Add(1)
-		go func(prob Problem, length, iters uint, sos *float64, best *Program, mut *sync.Mutex, cb Callback) {
-			MinimizeCommon(prob, length, iter, sos, best, mut, cb, [2]uint64{seed[0], uint64(i) + seed[1]})
+		go func(prob Problem, length, iters uint, sos *float64, best *Program, mut *sync.Mutex, cb Callback, bestScore *uint64) {
+			MinimizeCommon(prob, length, iter, sos, best, mut, cb, [2]uint64{seed[0], uint64(i) + seed[1]}, bestScore)
 			wg.Done()
-		}(prob, length, iter, &sos, &best, &mut, cb)
+		}(prob, length, iter, &sos, &best, &mut, cb, &bestScore)
 	}
 
 	wg.Wait()
