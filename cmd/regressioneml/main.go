@@ -7,6 +7,7 @@ import "math"
 import "encoding/binary"
 import "math/rand"
 import "encoding/json"
+import "os"
 import "github.com/neurlang/eml/regression"
 
 type complexSlice []complex128
@@ -118,6 +119,13 @@ func callback_json(prog []byte, sos float64, beta, rho uint, exp, log string, pe
 	}
 }
 
+func validateLengths(xs, ys complexSlice) error {
+	if len(xs) != len(ys) {
+		return fmt.Errorf("error: number of -x inputs (%d) must equal number of -y outputs (%d)", len(xs), len(ys))
+	}
+	return nil
+}
+
 func main() {
 	var xs, ys complexSlice
 	var a, r, b, s, t int
@@ -148,11 +156,9 @@ func main() {
 	}
 	seed[1] = uint64(t)
 
-	for len(xs) < len(ys) {
-		xs = append(xs, 0)
-	}
-	for len(ys) < len(xs) {
-		ys = append(ys, 0)
+	if err := validateLengths(xs, ys); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 
 	var problem regression.ProblemComplex
