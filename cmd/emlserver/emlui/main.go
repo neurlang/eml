@@ -1,12 +1,13 @@
 package main
 
 import (
-	"crypto/rand"
+	crand "crypto/rand"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"github.com/neurlang/eml/regression"
 	"math"
+	mrand "math/rand"
 	"syscall/js"
 )
 
@@ -19,24 +20,28 @@ func main() {
 	var prob regression.Problem
 	json.Unmarshal(data, &prob)
 	var a uint = 20
-	var b uint = 10
-	var r uint = 10000
+	var b uint = 100000
+	var r uint = 10
 	var cb = func(prog []byte, sos float64, beta, rho uint, seed0, seed1 uint64) {
 		percent := (100 * (beta + uint(b)*rho)) / (uint(b) * uint(r+1))
 		debugged := regression.Program(prog)
-		input.Set("innerHTML", fmt.Sprint(percent)+"%")
-		output.Set("innerHTML", "<small>loss: "+fmt.Sprint(sos)+"</small> "+debugged.Debug("exp", "log"))
+		go input.Set("innerHTML", fmt.Sprint(percent)+"%")
+		go output.Set("innerHTML", "<small>loss: "+fmt.Sprint(sos)+"</small> "+debugged.Debug("exp", "log"))
 	}
-	var rnd [8]byte
 	var seed [2]uint64
 	for i := range seed {
-		if _, err := rand.Read(rnd[:]); err != nil {
+		var rnd [8]byte
+		if _, err := crand.Read(rnd[:]); err != nil {
 			seed[i] = uint64(binary.LittleEndian.Uint64(rnd[:]))
+		} else if _, err := mrand.Read(rnd[:]); err != nil {
+			seed[i] = uint64(binary.LittleEndian.Uint64(rnd[:]))
+		} else {
+			seed[i] = mrand.Uint64()
 		}
 	}
 	go func() {
 		var prog, sos = regression.MinimizeRoundsComplex(prob.AsComplex(), a, b, r, math.Inf(1), cb, seed)
-		cb(prog, sos, b, r, 0, 0)
+		cb(prog, sos, b, r, seed[0], seed[1])
 	}()
 	select {}
 }
