@@ -6,6 +6,49 @@ import "io"
 import "encoding/json"
 import "syscall"
 
+func TestComplexSliceSetKeepsFullFloat64(t *testing.T) {
+	var xs complexSlice
+	if err := xs.Set("148.4131591025766"); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(xs) != 1 {
+		t.Fatalf("expected 1 value, got %d", len(xs))
+	}
+	if real(xs[0]) != 148.4131591025766 || imag(xs[0]) != 0 {
+		t.Fatalf("value should round-trip exactly, got %v", xs[0])
+	}
+}
+
+func TestComplexSliceSetComplexLiteral(t *testing.T) {
+	var xs complexSlice
+	if err := xs.Set("1+2i"); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if real(xs[0]) != 1 || imag(xs[0]) != 2 {
+		t.Fatalf("expected 1+2i, got %v", xs[0])
+	}
+}
+
+func TestComplexSliceSetSubnormal(t *testing.T) {
+	var xs complexSlice
+	if err := xs.Set("1e-300"); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if real(xs[0]) != 1e-300 || imag(xs[0]) != 0 {
+		t.Fatalf("expected 1e-300, got %v", xs[0])
+	}
+}
+
+func TestComplexSliceSetMaxFloat(t *testing.T) {
+	var xs complexSlice
+	if err := xs.Set("1.7976931348623157e308"); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if real(xs[0]) != 1.7976931348623157e308 || imag(xs[0]) != 0 {
+		t.Fatalf("expected max float64, got %v", xs[0])
+	}
+}
+
 func TestValidateLengthsEqual(t *testing.T) {
 	xs := complexSlice{1, 2}
 	ys := complexSlice{3, 4}

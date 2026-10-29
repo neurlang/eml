@@ -17,7 +17,7 @@ func (f *complexSlice) String() string {
 }
 
 func (f *complexSlice) Set(value string) error {
-	v, err := strconv.ParseComplex(value, 64)
+	v, err := strconv.ParseComplex(value, 128)
 	if err != nil {
 		return err
 	}
