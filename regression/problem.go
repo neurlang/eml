@@ -230,13 +230,13 @@ func MinimizeRounds(prob Problem, length, iters, rounds, stagnate uint, sos floa
 			sos += sq
 		}
 		p = Join(prog, p)
-		// The "solved" early-exit uses the full total, never raw sos: with the
-		// penalty the composed best is sos + Lambda*len(p), so a perfect fit
-		// (sos==0) only stops when the penalty is also zero.
-		if sos+opts.Lambda*float64(len(p)) <= 0 {
+		newsos = sos
+		// A perfect fit (sos==0) cannot be improved by adding tokens: Join only
+		// grows the program, so later rounds could not lower the total.
+		// Break before any further rounds so newsos reflects the exact fit.
+		if sos == 0 {
 			break
 		}
-		newsos = sos
 	}
 	return
 }

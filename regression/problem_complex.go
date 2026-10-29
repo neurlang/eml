@@ -150,10 +150,13 @@ func MinimizeRoundsComplex(prob ProblemComplex, length, iters, rounds, stagnate 
 			sos += sq
 		}
 		p = Join(prog, p)
-		if sos+opts.Lambda*float64(len(p)) <= 0 {
+		newsos = sos
+		// A perfect fit (sos==0) cannot be improved by adding tokens: Join only
+		// grows the program, so later rounds could not lower the total.
+		// Break before any further rounds so newsos reflects the exact fit.
+		if sos == 0 {
 			break
 		}
-		newsos = sos
 	}
 	return
 }
