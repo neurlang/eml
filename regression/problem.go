@@ -92,7 +92,11 @@ outer:
 
 		total := sum + cPen
 		mut.Lock()
-		if *sos+opts.Lambda*float64(opts.Size) > total {
+		baseSize := opts.Size
+		if *best != nil {
+			baseSize = composedSize(*best, opts.Size)
+		}
+		if *sos+opts.Lambda*float64(baseSize) > total {
 			atomic.StoreUint64(bestScore, math.Float64bits(total))
 			*best = candidate
 			if cb != nil {
