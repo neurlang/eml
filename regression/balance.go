@@ -18,6 +18,11 @@ func (r *Randomizer) Make(length uint) (p Program) {
 	return
 }
 
+// UintN
+func (r *Randomizer) UintN(n uint) uint {
+	return uint(((*rand.Rand)(r)).IntN(int(n)))
+}
+
 // Balance balances the EML program and tells the final program size.
 // Past-the-end input is treated as an implicit 0 (variable) unary leaf.
 func (r *Randomizer) Balance(p *Program) uint {
